@@ -1287,7 +1287,7 @@ unsafe fn ingest_sdl_event_with_window(app: &mut App, fr: &mut Frame,
             return;
         }
         if app.ptr.dpad_mode {
-            if app.ptr.mot_accum < 120.0 {
+            if app.ptr.mot_accum < super::input::DPAD_MOTION_GATE {
                 return;
             }
             app.ptr.dpad_mode = false;
@@ -1318,7 +1318,7 @@ unsafe fn ingest_sdl_event_with_window(app: &mut App, fr: &mut Frame,
         // as an OK key-down, so it reaches the focused control by the key path.
         if super::input::click_is_ok(
             app.ptr.dpad_mode,
-            app.ptr.cur_hidden,
+            app.ptr.mot_accum,
             unsafe { super::boot::cursor_is_transparent() },
         ) {
             app.ptr.ok_from_click = true;
