@@ -71,18 +71,21 @@ impl Pointer {
 /// app hides the pointer by swapping in a transparent cursor (`boot::hide_cursor`). The system
 /// still believes its pointer is up, so the Magic Remote's OK arrives as a CLICK at wherever that
 /// invisible pointer sits, never as an OK key: the viewer arrows to the `…` disc, presses OK, and
-/// nothing opens. (Measured on an OLED55B7V-Z, 3.9.3, 2026-10-15: Up, Right, Right, then OK, and
-/// no OK key in the event log.) Where LG's call exists the system hides its own pointer and OK
-/// arrives as a key, so the click never comes.
+/// the click lands on the picture and toggles pause. (Measured on an OLED55B7V-Z, 3.9.3,
+/// 2026-10-15: Up, Right, Right, no OK key in the event log, and the player paused.) Where LG's
+/// call exists the system hides its own pointer and OK arrives as a key, so the click never comes.
 ///
-/// So while the D-pad owns focus on a transparent-cursor set, a click that was not preceded by
-/// enough motion to leave D-pad mode ([`DPAD_MOTION_GATE`]) is the OK key on the focused control.
-/// **Not "while the pointer is hidden"**: pressing OK jiggles a Magic Remote, any motion at all
-/// shows the pointer again, and a fix keyed on `cur_hidden` never fired on the device (the same
-/// presses, second build: still no OK key). Motion past the gate still makes the next click a
-/// real one.
-pub(crate) fn click_is_ok(dpad_mode: bool, motion_since_dpad: f32, transparent_cursor: bool) -> bool {
-    dpad_mode && motion_since_dpad < DPAD_MOTION_GATE && transparent_cursor
+/// So while the D-pad owns focus on a transparent-cursor set, a click is the OK key on the focused
+/// control when either the pointer has not travelled far enough to leave D-pad mode
+/// ([`DPAD_MOTION_GATE`]) or it lands on no control at all. **Not "while the pointer is
+/// hidden"**: pressing OK jiggles a Magic Remote, any motion at all shows the pointer again, and a
+/// fix keyed on `cur_hidden` never fired on the device. **Nor travel alone**: travel is summed
+/// since the last D-pad press, so a hand simply holding the remote drifts past any gate — measured
+/// 600 px between Up, Right, Right and OK over full-screen video, where the player never leaves
+/// D-pad mode, and the click paused the film under a lit `…` disc. A click that lands ON a control
+/// after real travel is still that control's.
+pub(crate) fn click_is_ok(dpad_mode: bool, motion_since_dpad: f32, on_control: bool, transparent_cursor: bool) -> bool {
+    dpad_mode && transparent_cursor && (motion_since_dpad < DPAD_MOTION_GATE || !on_control)
 }
 
 /// Pointer travel, in logical px accumulated since the last D-pad press, that hands focus back to
@@ -1649,16 +1652,17 @@ mod click_is_ok_tests {
     /// click is a click: the pointer was moved on purpose (past the gate, or out of D-pad mode),
     /// or LG's own hide made OK a real key already.
     #[test]
-    fn a_click_in_dpad_mode_on_a_transparent_cursor_set_is_ok_until_the_pointer_really_moves() {
-        assert!(click_is_ok(true, 0.0, true));
-        assert!(click_is_ok(true, 6.0, true), "the jiggle of pressing OK is still OK");
-        for (dpad, motion, transparent) in [
-            (true, super::DPAD_MOTION_GATE, true),
-            (true, 500.0, true),
-            (false, 0.0, true),
-            (true, 0.0, false),
+    fn a_click_in_dpad_mode_on_a_transparent_cursor_set_is_ok_unless_the_pointer_moved_onto_a_control() {
+        assert!(click_is_ok(true, 0.0, true, true));
+        assert!(click_is_ok(true, 6.0, true, true), "the jiggle of pressing OK is still OK");
+        assert!(click_is_ok(true, 600.0, false, true), "drift onto bare video is still OK");
+        for (dpad, motion, on_control, transparent) in [
+            (true, super::DPAD_MOTION_GATE, true, true),
+            (true, 500.0, true, true),
+            (false, 0.0, false, true),
+            (true, 0.0, false, false),
         ] {
-            assert!(!click_is_ok(dpad, motion, transparent), "{dpad} {motion} {transparent}");
+            assert!(!click_is_ok(dpad, motion, on_control, transparent), "{dpad} {motion} {on_control} {transparent}");
         }
     }
 }
